@@ -29,7 +29,10 @@ Also see the unit tests for what is possible.
 
 Example:
 
-    var SLDStyler = new L.SLDStyler(SLDXmlOrText);
+    var SLDStyler = new L.SLDStyler(SLDXmlOrText, {
+        unmatchedStyle : unmatchedStyle,
+        defaultStyle : defaultStyle
+    });
 
     var geojsonLayer = L.geoJson(jsonObject, {
        style: SLDStyler.getStyleFunction()

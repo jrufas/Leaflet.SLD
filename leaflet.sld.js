@@ -3,11 +3,11 @@
 // default Path style applied if nothing matches
 var defaultStyle = {
    stroke: true,
-   color: "#03f",
-   weight: 5,
+   color: "#03f00",
+   weight: 0,
    opacity: 1,
    fillOpacity: 1,
-   fillColor: '#03f',
+   fillColor: '#03f00',
    strokeOpacity: 1,
    strokeWidth: 1,
    strokeDashstyle: "solid",
@@ -17,6 +17,12 @@ var defaultStyle = {
    lineCap: null,
 };
 
+
+// default Path style applied if nothing matches
+var voidStyle = {
+   color: false,
+   fill: false
+};
 // attributes converted to numeric values
 var numericAttributes = ['weight', 'opacity', 'fillOpacity', 'strokeOpacity'];
 
@@ -32,7 +38,8 @@ var attributeNameMapping = {
    //strokeDashstyle,
    //pointRadius,
    'stroke-linejoin': 'lineJoin',
-   'stroke-linecap': 'lineCap'
+   'stroke-linecap': 'lineCap',
+   'size': 'radius'
 };
 
 // mapping SLD operators to shortforms
@@ -71,6 +78,8 @@ function getTagNameArray(element, tagName) {
 L.SLDStyler = L.Class.extend({
    // none yet
    options: {
+      unmatchedStyle : voidStyle,
+      defaultStyle: defaultStyle
    },
    initialize: function(sldStringOrXml, options) {
       L.Util.setOptions(this, options);
@@ -84,7 +93,7 @@ L.SLDStyler = L.Class.extend({
       // SvgParameter names below se:Fill and se:Stroke
       // are unique so don't bother parsing them seperatly.
       var parameters = getTagNameArray(symbolizer, 'se:SvgParameter');
-      var cssParams = L.extend({}, defaultStyle);
+      var cssParams = L.extend({}, this.options.defaultStyle);
       parameters.forEach(function(param) {
          var key = param.getAttribute('name');
          var mappedKey = attributeNameMapping[key];
@@ -102,8 +111,8 @@ L.SLDStyler = L.Class.extend({
       });
       return cssParams;
    },
-   parseFilter: function(filter) {
 
+   parseFilter: function(filter) {
       var hasAnd = getTagNameArray(filter, 'ogc:And').length;
       var hasOr = getTagNameArray(filter, 'ogc:Or').length;
       var filterJson = {
@@ -125,15 +134,22 @@ L.SLDStyler = L.Class.extend({
       });
       return filterJson;
    },
-   parseRule: function(rule) {
 
+   parseRule: function(rule) {
       var filter = getTagNameArray(rule, 'ogc:Filter')[0];
-      var symbolizer = getTagNameArray(rule, 'se:PolygonSymbolizer')[0];
-      return {
-         filter: this.parseFilter(filter),
-         symbolizer: this.parseSymbolizer(symbolizer)
-      }
+      var polygonSymbolizer = getTagNameArray(rule, 'se:PolygonSymbolizer')[0];
+      var lineSymbolizer = getTagNameArray(rule, 'se:LineSymbolizer')[0];
+      var pointSymbolizer = getTagNameArray(rule, 'se:PointSymbolizer')[0];
+ 
+      var objRet = new Object();
+      if (filter) objRet.filter = this.parseFilter(filter);
+      if (polygonSymbolizer) objRet.polygonSymbolizer = this.parseSymbolizer(polygonSymbolizer);
+      if (lineSymbolizer) objRet.lineSymbolizer = this.parseSymbolizer(lineSymbolizer);
+      if (pointSymbolizer) objRet.pointSymbolizer = this.parseSymbolizer(pointSymbolizer);
+
+      return objRet;
    },
+
    parse: function(sldStringOrXml) {
       var xmlDoc = sldStringOrXml;
       if (typeof(sldStringOrXml) === 'string') {
@@ -149,13 +165,14 @@ L.SLDStyler = L.Class.extend({
          }, this);
       }, this);
    },
+
    isFilterMatch: function(filter, properties) {
       var operator = filter.operator == null || filter.operator == 'and' ? 'every' : 'some';
       return filter.comparisions[operator](function(comp) {
          if (comp.operator == '==') {
             return properties[comp.property] == comp.literal;
          } else if (comp.operator == '!=') {
-            return properties[comp.property] == comp.literal;
+            return properties[comp.property] != comp.literal;
          } else if (comp.operator == '<') {
             return properties[comp.property] < comp.literal;
          } else if (comp.operator == '>') {
@@ -180,15 +197,28 @@ L.SLDStyler = L.Class.extend({
          }, this);
       }, this);
       if (matchingRule != null) {
-         return matchingRule.symbolizer;
+         // Select symbolizer by geometry type
+         switch (feature.geometry.type) {
+            case 'LineString':
+            case 'MultiLineString':
+               return matchingRule.lineSymbolizer;
+               break;
+            case 'Polygon':
+            case 'MultiPolygon':
+               return matchingRule.polygonSymbolizer;
+               break;
+            case 'Point':
+               return matchingRule.pointSymbolizer;
+               break;
+         }
       }
-      return {};
+      return this.options.unmatchedStyle;
    },
    getStyleFunction: function() {
       return this.styleFn.bind(this);
    }
 });
 
-L.SLDStyler.defaultStyle = defaultStyle;
+//L.SLDStyler.defaultStyle = defaultStyle;
 
 })();
